@@ -1,114 +1,47 @@
 package com.github.tacowasa059.commandmacroported.mixin;
 
-import com.github.tacowasa059.commandmacroported.accessor.ServerFunctionManagerAccessor;
-import com.github.tacowasa059.commandmacroported.ported.FunctionInstantiationException;
 import com.github.tacowasa059.commandmacroported.ported.ModSuggestionProviders;
-import com.github.tacowasa059.commandmacroported.ported.Tracer;
+import com.github.tacowasa059.commandmacroported.ported.returns.PortedDebugCommand;
 import com.mojang.brigadier.CommandDispatcher;
-import com.mojang.logging.LogUtils;
-import net.minecraft.Util;
-import net.minecraft.commands.CommandFunction;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.item.FunctionArgument;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.chat.Component;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.commands.DebugCommand;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-import org.slf4j.Logger;
 
-import java.io.IOException;
-import java.io.PrintWriter;
-import java.io.UncheckedIOException;
-import java.io.Writer;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Collection;
-
+/**
+ * Registers {@code /debug function} with the engine {@link PortedDebugCommand.TraceCustomExecutor}
+ * so the trace runs through the deferred engine with a tracer attached (faithful 1.20.3 behaviour,
+ * incl. {@code return} tracing and the no-recursion / no-return-run guards).
+ */
 @Mixin(DebugCommand.class)
 public class DebugCommandsMixin {
-    @Unique
-    private static final Logger commandmacroported$LOGGER = LogUtils.getLogger();
     @Shadow
-    private static int start(CommandSourceStack p_136910_){
+    private static int start(CommandSourceStack p_136910_) {
         return 0;
     }
+
     @Shadow
-    private static int stop(CommandSourceStack p_136910_){
+    private static int stop(CommandSourceStack p_136910_) {
         return 0;
     }
-    @Shadow
-    private static int traceFunction(CommandSourceStack p_180066_, Collection<CommandFunction> p_180067_){
-        return 0;
-    }
-    @Inject(method = "register", at=@At("HEAD"), cancellable = true)
+
+    @Inject(method = "register", at = @At("HEAD"), cancellable = true)
     private static void register(CommandDispatcher<CommandSourceStack> dispatcher, CallbackInfo ci) {
-        dispatcher.register(Commands.literal("debug").requires((p_180073_) -> {
-            return p_180073_.hasPermission(3);
-        }).then(Commands.literal("start").executes((p_180069_) -> {
-            return DebugCommandsMixin.start(p_180069_.getSource());
-        })).then(Commands.literal("stop").executes((p_136918_) -> {
-            return DebugCommandsMixin.stop(p_136918_.getSource());
-        })).then(Commands.literal("function").requires((p_180071_) -> {
-            return p_180071_.hasPermission(3);
-        }).then(Commands.argument("name", FunctionArgument.functions()).suggests(ModSuggestionProviders.SUGGEST_FUNCTION).executes((p_136908_) -> {
-            return DebugCommandsMixin.traceFunction(p_136908_.getSource(), FunctionArgument.getFunctions(p_136908_, "name"));
-        }))));
+        dispatcher.register(Commands.literal("debug").requires((source) -> {
+            return source.hasPermission(3);
+        }).then(Commands.literal("start").executes((context) -> {
+            return DebugCommandsMixin.start(context.getSource());
+        })).then(Commands.literal("stop").executes((context) -> {
+            return DebugCommandsMixin.stop(context.getSource());
+        })).then(Commands.literal("function").requires((source) -> {
+            return source.hasPermission(3);
+        }).then(Commands.argument("name", FunctionArgument.functions()).suggests(ModSuggestionProviders.SUGGEST_FUNCTION)
+                .executes(new PortedDebugCommand.TraceCustomExecutor()))));
+        ci.cancel();
     }
-
-    @Inject(method = "traceFunction", at=@At("HEAD"), cancellable = true)
-    private static void traceFunction(CommandSourceStack p_180066_, Collection<CommandFunction> p_180067_,
-                                      CallbackInfoReturnable<Integer> cir) {
-        int i = 0;
-        MinecraftServer minecraftserver = p_180066_.getServer();
-        String s = "debug-trace-" + Util.getFilenameFormattedDateTime() + ".txt";
-
-        try {
-            Path path = minecraftserver.getFile("debug").toPath();
-            Files.createDirectories(path);
-
-            try (Writer writer = Files.newBufferedWriter(path.resolve(s), StandardCharsets.UTF_8)) {
-                PrintWriter printwriter = new PrintWriter(writer);
-
-                for(CommandFunction commandfunction : p_180067_) {
-                    printwriter.println((Object)commandfunction.getId());
-                    Tracer debugcommand$tracer = new Tracer(printwriter);
-
-                    try {
-                        i += ((ServerFunctionManagerAccessor) p_180066_.getServer().getFunctions()).commandmacroported$execute(commandfunction,
-                                p_180066_.withSource(debugcommand$tracer).withMaximumPermission(2), debugcommand$tracer, (CompoundTag)null);
-                    } catch (FunctionInstantiationException functioninstantiationexception) {
-                        p_180066_.sendFailure(functioninstantiationexception.messageComponent());
-                    }
-                }
-            }
-        } catch (IOException | UncheckedIOException uncheckedioexception) {
-            commandmacroported$LOGGER.warn("Tracing failed", (Throwable)uncheckedioexception);
-            p_180066_.sendFailure(Component.translatable("commands.debug.function.traceFailed"));
-        }
-
-        int j = i;
-        if (p_180067_.size() == 1) {
-            p_180066_.sendSuccess(() -> {
-                return Component.translatable("commands.debug.function.success.single", j, p_180067_.iterator().next().getId(), s);
-            }, true);
-        } else {
-            p_180066_.sendSuccess(() -> {
-                return Component.translatable("commands.debug.function.success.multiple", j, p_180067_.size(), s);
-            }, true);
-        }
-
-        cir.setReturnValue(i);
-        cir.cancel();
-    }
-
-
 }

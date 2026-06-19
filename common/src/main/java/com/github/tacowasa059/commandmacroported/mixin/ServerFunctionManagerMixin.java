@@ -3,6 +3,10 @@ package com.github.tacowasa059.commandmacroported.mixin;
 import com.github.tacowasa059.commandmacroported.accessor.ServerFunctionManagerAccessor;
 import com.github.tacowasa059.commandmacroported.ported.FunctionInstantiationException;
 import com.github.tacowasa059.commandmacroported.ported.PortedCommandFunction;
+import com.github.tacowasa059.commandmacroported.ported.returns.CommandExecution;
+import com.github.tacowasa059.commandmacroported.ported.returns.CommandResultCallback;
+import com.github.tacowasa059.commandmacroported.ported.returns.InstantiatedFunction;
+import com.github.tacowasa059.commandmacroported.ported.returns.PortedInstantiatedFunction;
 import net.minecraft.commands.CommandFunction;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.nbt.CompoundTag;
@@ -26,7 +30,21 @@ public abstract class ServerFunctionManagerMixin implements ServerFunctionManage
             throws FunctionInstantiationException {
         ServerFunctionManager manager = (ServerFunctionManager) (Object) this;
         CommandFunction commandfunction = ((PortedCommandFunction)precommandFunction).instantiate(p_300204_, manager.getDispatcher(), p_179962_);
-        return execute(commandfunction, p_179962_, p_179963_);
+
+        // Run the function body through the ported 1.20.3 deferred engine (queueInitialFunctionCall)
+        // instead of the 1.20.1 deque model, so that `return`/`return run`/`return fail` inside the
+        // function propagate through the call Frame. The function's return value is delivered via the
+        // callback below (the engine only fires it when the function executes `return`).
+        InstantiatedFunction<CommandSourceStack> instantiated = new PortedInstantiatedFunction(commandfunction);
+        int[] result = new int[]{0};
+        CommandResultCallback callback = (success, value) -> {
+            if (success) {
+                result[0] = value;
+            }
+        };
+        CommandExecution.executeCommandInContext(p_179962_, executionContext ->
+                CommandExecution.queueInitialFunctionCall(executionContext, instantiated, p_179962_, callback));
+        return result[0];
     }
 
     @Inject(method = "execute(Lnet/minecraft/commands/CommandFunction;Lnet/minecraft/commands/CommandSourceStack;)I", at = @At("HEAD"), cancellable = true)

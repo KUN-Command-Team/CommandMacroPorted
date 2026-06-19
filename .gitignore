@@ -1,6 +1,8 @@
 .gradle/
 .idea/
 .vscode/
+.claude
 build/
 run/
 run-data/
+test.md

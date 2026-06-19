@@ -6,11 +6,19 @@
   "refmap": "${mod_id}.refmap.json",
   "mixins": [
     "CommandFunctionMixin",
+    "CommandEntryAccessor",
+    "CommandSourceStackMixin",
+    "CommandsMixin",
     "DataCommandsMixin",
     "DebugCommandsMixin",
+    "ExecuteCommandMixin",
     "FunctionCommandMixin",
+    "GameRulesInvoker",
+    "GameRulesIntegerValueInvoker",
     "RandomSequencesMixin",
-    "ServerFunctionManagerMixin"
+    "ReturnCommandMixin",
+    "ServerFunctionManagerMixin",
+    "ServerGamePacketListenerImplMixin"
   ],
   "client": [],
   "injectors": {
