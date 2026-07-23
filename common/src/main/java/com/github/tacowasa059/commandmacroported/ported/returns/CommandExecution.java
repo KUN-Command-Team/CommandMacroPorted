@@ -15,7 +15,6 @@ import net.minecraft.network.chat.ComponentUtils;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.world.level.GameRules;
 
 import javax.annotation.Nullable;
@@ -41,9 +40,11 @@ public final class CommandExecution {
     }
 
     public static int performCommand(ParseResults<CommandSourceStack> parse, String command) {
+        // No profiler push/pop here: unlike 1.20.3's standalone performCommand, this is invoked via
+        // CommandsMixin's @Redirect on the dispatch call *inside* vanilla's performCommand, which
+        // already brackets the whole thing with getProfiler().push("/" + command)/pop(). Pushing again
+        // would just nest a redundant (and possibly stale-labelled) "/command" section under it.
         CommandSourceStack source = parse.getContext().getSource();
-        ProfilerFiller profiler = source.getServer().getProfiler();
-        profiler.push(() -> "/" + command);
         int[] result = new int[]{0};
 
         try {
@@ -64,8 +65,6 @@ public final class CommandExecution {
             if (SharedConstants.IS_RUNNING_IN_IDE) {
                 source.sendFailure(Component.literal(Util.describeError(exception)));
             }
-        } finally {
-            profiler.pop();
         }
 
         return result[0];
